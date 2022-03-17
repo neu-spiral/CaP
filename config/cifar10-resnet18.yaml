@@ -1,0 +1,36 @@
+device: cuda:0
+model: resnet18
+data_code: cifar10
+num_classes: 10
+model_file: test.pt
+
+epochs: 0
+batch_size: 128
+optimizer: adam
+lr_scheduler : cosine
+learning_rate: 0.01
+seed: 1234
+
+sparsity_type: irregular
+prune_ratio: v1
+admm: True
+admm_epochs: 3
+rho: 0.0001
+multi_rho: True
+retrain_bs: 128
+retrain_lr: 0.005
+retrain_ep: 50
+retrain_opt: sgd
+
+xentropy_weight: 1.
+
+warmup : False
+warmup_lr :  0.0001
+warmup_epochs :  10
+mix_up :  False
+alpha :  0.3
+smooth :  False
+smooth_eps :  0
+save_last_model_only: False
+
+layer_type: regular

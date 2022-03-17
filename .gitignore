@@ -1,0 +1,12 @@
+*.pyc
+*.pt
+*.npy
+*.gz
+*-ubyte
+*.pdf
+*.out
+*.DS_Store
+*.vscode
+logs
+assets/data/
+scripts
