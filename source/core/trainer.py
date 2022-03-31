@@ -4,10 +4,11 @@ from ..utils.misc import *
 from ..utils.eval import *
 from .admm import *
 
-def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler,ADMM=None, masks=None):
+def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, ADMM=None, masks=None, comm=False):
 
     batch_acc    = AverageMeter()
     batch_loss   = AverageMeter()
+    batch_comm   = AverageMeter()
     
     n_data = configs['batch_size'] * len(data_loader)
     
@@ -21,7 +22,8 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler,ADM
         data   = data.to(configs['device'])
         target = target.to(configs['device'])
         total_loss = 0
-        
+        comm_loss = 0
+            
         optimizer.zero_grad()
         
         if configs['mixup']:
@@ -39,6 +41,12 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler,ADM
             z_u_update(configs, ADMM, model, cepoch, batch_idx)  # update Z and U variables
             prev_loss, admm_loss, total_loss = append_admm_loss(ADMM, model, total_loss)  # append admm losses
             
+        if comm:
+            for (name, W) in model.named_parameters():
+                if name in ADMM.prune_ratios:
+                    comm_cost = torch.abs(W) * configs['comm_costs'][name]
+                    comm_loss += comm_cost.view(comm_cost.size(0), -1).sum()
+            total_loss += configs['lambda_comm'] * comm_loss
         
         total_loss.backward() # Back Propagation
         
@@ -59,15 +67,17 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler,ADM
 
         acc1 = accuracy(output, target, topk=(1,))
         batch_loss.update(loss.item(), data.size(0))
+        batch_comm.update(comm_loss.item() if comm_loss else comm_loss, data.size(0))
         batch_acc.update(acc1[0].item(), data.size(0))
 
         # # # preparation log information and print progress # # #
-        msg = 'Train Epoch: {cepoch} [ {cidx:5d}/{tolidx:5d} ({perc:2d}%)] Loss:{loss:.4f} Acc:{acc:.4f}'.format(
+        msg = 'Train Epoch: {cepoch} [ {cidx:5d}/{tolidx:5d} ({perc:2d}%)] Loss:{loss:.4f} CommLoss:{commloss:.4f} Acc:{acc:.4f}'.format(
                         cepoch = cepoch,  
                         cidx = (batch_idx+1)*configs['batch_size'], 
                         tolidx = n_data,
                         perc = int(100. * (batch_idx+1)*configs['batch_size']/n_data), 
                         loss = batch_loss.avg,
+                        commloss = batch_comm.avg,
                         acc  = batch_acc.avg,
                     )
 

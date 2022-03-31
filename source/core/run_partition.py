@@ -58,10 +58,12 @@ def get_args():
     parser.add_argument('--distill-alpha', default=1, type=float, help='weight for distillation loss')
    
     # partition
-    parser.add_argument('-lt', '--layer-type', default='', type=str, help='regular/masked')
+    parser.add_argument('-np', '--num_partition', default=0, type=int, help='number of partition')
+    parser.add_argument('-lt', '--layer-type', default='', type=str, help='weight/mask')
+    parser.add_argument('-bt', '--bn-type', default='', type=str, help='regular/masked')
     parser.add_argument('--num-students', type=int, default=0, help='number of students')
     parser.add_argument('--filter-sizes', metavar='N', default='', help ="Ex, for 2 students --filter_sizes 64,64")
-    parser.add_argument('-lf', '--lambda_f', default=0, type=float, help='the coefficient of the HSIC objective')  
+    parser.add_argument('-lc','--lambda-comm', default=0, type=float, help='the coefficient of the comm objective')  
     args = parser.parse_args()
 
     return args
@@ -75,9 +77,14 @@ def main():
     config_dict['device'] = args.device
     
     # partition
+    if args.num_partition:
+        config_dict['num_partition'] = args.num_partition
     if args.layer_type:
         config_dict['layer_type'] = args.layer_type
-    
+    if args.bn_type:
+        config_dict['bn_type'] = args.bn_type
+    if args.lambda_comm:
+        config_dict['lambda_comm'] = args.lambda_comm
     # distillation
     config_dict['distill_model'] = args.distill_model
     config_dict['distill_loss'] = args.distill_loss
@@ -172,4 +179,7 @@ if __name__ == "__main__":
     mop = MoP(configs)
     mop.prune()
     mop.finetune()
+    
+    #mop.pruneMask()
+    #mop.finetuneWeight()
    

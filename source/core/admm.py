@@ -15,10 +15,12 @@ import collections
 from ..utils.testers import *
 
 class ADMM:
-    def __init__(self, config_dict, model, rho=0.001):
+    def __init__(self, config_dict, model, rho=0.001, target='weight'):
         self.ADMM_U = {}
         self.ADMM_Z = {}
         self.rho = rho
+        self.target = target
+        
         self.rhos = {}
         self.prune_ratio = config_dict['prune_ratio']
         self.prune_ratios = {}
@@ -37,7 +39,9 @@ class ADMM:
         self.prune_ratios = {}
         for name, weight in model.named_parameters():
             if (len(weight.size()) == 4):
-                self.prune_ratios[name] = self.prune_ratio
+                if name == 'conv1.weight' or name == 'conv1.mask': continue
+                if self.target in name:
+                    self.prune_ratios[name] = self.prune_ratio
         
         # setup rho
         for k, v in self.prune_ratios.items():
@@ -155,24 +159,28 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
             expand_above_threshold).to(device), torch.from_numpy(weight).to(device)
 
     elif (sparsity_type == 'partition'):
-        num_partition = int(1 / prune_ratio)
-        #print(num_partition)
+        num_partition = int(1 / (1-prune_ratio))
         weight_copy = np.zeros(weight.shape)
+        k1, m1 = divmod(weight.shape[0], num_partition)
+        k2, m2 = divmod(weight.shape[0], num_partition)
         for i in range(num_partition):
-            weight_copy[i::num_partition,i::num_partition,:,:] = weight[i::num_partition,i::num_partition,:,:]
-            #weight_copy[i::num_partition,:,:,:] = weight[i::num_partition,:,:,:]
-        
-        
-        empty_filters = 0
-        filter_num = weight.shape[0]
-        for i in range(filter_num):
-            if np.sum(weight_copy[i,:,:,:]) == 0:
-                empty_filters += 1
-        #print(filter_num, empty_filters) 
-        
-        
+            #weight_copy[i::num_partition,i::num_partition,:,:] = weight[i::num_partition,i::num_partition,:,:]
+            weight_copy[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:] = weight[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:]
         return num_partition, torch.from_numpy(weight_copy).float().to(device)    
-            
+    
+    elif (sparsity_type == 'kernel'):
+        shape = weight.shape
+        weight3d = weight.reshape(weight.shape[0], weight.shape[1], -1)
+        shape3d = weight3d.shape
+        kernel_l2_norm = LA.norm(weight3d, 2, axis=2)
+        percentile = np.percentile(kernel_l2_norm, percent)
+        under_threshold = kernel_l2_norm <= percentile
+        above_threshold = kernel_l2_norm > percentile
+        weight3d[under_threshold, :] = 0
+        
+        weight = weight3d.reshape(shape)
+        return above_threshold, torch.from_numpy(weight).to(device)
+    
     elif (sparsity_type == "filter"):
         shape = weight.shape
         weight2d = weight.reshape(shape[0], -1)
@@ -187,7 +195,7 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
         expand_above_threshold = np.zeros(shape2d, dtype=np.float32)
         for i in range(shape2d[0]):
             expand_above_threshold[i, :] = above_threshold[i]
-        weight = weight.reshape(shape)
+        weight = weight2d.reshape(shape)
         expand_above_threshold = expand_above_threshold.reshape(shape)
         return torch.from_numpy(
             expand_above_threshold).to(device), torch.from_numpy(weight).to(device)

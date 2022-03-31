@@ -16,13 +16,23 @@ def get_layers(layer_type):
     """
     Returns: (conv_layer)
     """
-    if layer_type == "regular":
+    if layer_type == "weight":
         return nn.Conv2d
-    elif layer_type == "masked":
+    elif layer_type == "mask":
         return MaskConv2d
     else:
         raise ValueError("Incorrect layer type")
 
+def get_bn_layers(bn_type):
+    """
+    Returns: (conv_layer)
+    """
+    if bn_type == "regular":
+        return nn.BatchNorm2d
+    elif bn_type == "masked":
+        return BatchNorm2dPartition
+    else:
+        raise ValueError("Incorrect layer type")
         
 def set_optimizer(configs, model, train_loader, opt, lr, epochs):
     """ bag of tricks set-ups"""

@@ -175,8 +175,7 @@ def test_filter_sparsity(model):
     total_empty_filters = 0
 
     for name, weight in model.named_parameters():
-        #if(len(weight.size()) == 4): # only consider conv layers
-        if 'weight' in name and 'conv' in name:
+        if(len(weight.size()) == 4): # only consider conv layers
             weight = weight.cpu().detach().numpy()
             zeros = np.sum(weight == 0)
             total_zeros += zeros
@@ -207,7 +206,82 @@ def test_filter_sparsity(model):
         total_filters, total_empty_filters, total_empty_filters / total_filters))
     print("===========================================================================\n\n")
 
+def test_kernel_sparsity(model):
+    """
 
+    :param model: saved re-trained model
+    :return:
+    """
+
+    total_zeros = 0
+    total_nonzeros = 0
+
+    total_kernels = 0
+    total_empty_kernels = 0
+
+    for name, weight in model.named_parameters():
+        if(len(weight.size()) == 4): # only consider conv layers
+            weight = weight.cpu().detach().numpy()
+            
+            zeros = np.sum(weight == 0)
+            total_zeros += zeros
+            non_zeros = np.sum(weight != 0)
+            total_nonzeros += non_zeros
+            
+            weight2d = weight.reshape(weight.shape[0], weight.shape[1], -1).sum(-1)
+            
+            total_kernels += weight.shape[0]*weight.shape[1]
+            total_empty_kernels += np.sum(weight2d == 0)
+            
+            
+    print("---------------------------------------------------------------------------")
+    print("total number of zeros: {}, non-zeros: {}, zero sparsity is: {:.4f}".format(
+        total_zeros, total_nonzeros, total_zeros / (total_zeros + total_nonzeros)))
+    print("total number of kernels:{}, zero-kernels:{}, kernel sparsity is: {:.4f}".format(
+        total_kernels, total_empty_kernels, total_empty_kernels/total_kernels))
+    print("===========================================================================\n\n")
+    
+def test_partition(model, num_partition=1):
+    """
+
+    :param model: saved re-trained model
+    :return:
+    """
+
+    total_kernels = 0
+    total_zeros = 0
+    total_comms = 0
+    total_comms_select = 0
+
+    total_par = 0
+    total_par_remove = 0
+
+    for name, weight in model.named_parameters():
+        if(len(weight.size()) == 4): # only consider conv layers
+            if name == 'conv1.weight': continue
+            weight = weight.cpu().detach().numpy()
+            
+            weight2d = weight.reshape(weight.shape[0], weight.shape[1], -1).sum(-1)
+            
+            cost_mask = np.ones(weight2d.shape)
+            k1, m1 = divmod(weight.shape[0], num_partition)
+            k2, m2 = divmod(weight.shape[0], num_partition)
+            for i in range(num_partition):
+                weight_copy[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:] = 0
+            
+            total_kernels += weight.shape[0]*weight.shape[1]
+            total_zeros += np.sum(weight2d == 0)
+            total_comms += np.sum(cost_mask != 0)
+            total_comms_select += np.sum((weight2d*cost_mask) != 0)
+            
+            
+    print("---------------------------------------------------------------------------")
+    print("total number of kernels:{}, zero-kernels:{}, kernel sparsity is: {:.4f}".format(
+        total_kernels, total_zeros, total_zeros/total_kernels))
+    print("total number of comm-kernals: {}, selected: {}, select rate is: {:.4f}".format(
+        total_comms, total_comms_select, total_comms_select/total_comms))
+    print("===========================================================================\n\n")
+    
 def test_filter_balance(model):
     """
 

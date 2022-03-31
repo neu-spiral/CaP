@@ -6,13 +6,13 @@ model_file: test.pt
 
 epochs: 0
 batch_size: 128
-optimizer: adam
-lr_scheduler : cosine
+optimizer: sgd
+lr_scheduler : default
 learning_rate: 0.01
 seed: 1234
 
-sparsity_type: irregular
-prune_ratio: v1
+sparsity_type: kernel
+prune_ratio: 0.5
 admm: True
 admm_epochs: 3
 rho: 0.0001
@@ -20,12 +20,12 @@ multi_rho: True
 retrain_bs: 128
 retrain_lr: 0.005
 retrain_ep: 50
-retrain_opt: sgd
+retrain_opt: default
 
 xentropy_weight: 1.
 
 warmup : False
-warmup_lr :  0.0001
+warmup_lr :  0.001
 warmup_epochs :  10
 mix_up :  False
 alpha :  0.3
@@ -33,4 +33,6 @@ smooth :  False
 smooth_eps :  0
 save_last_model_only: False
 
-layer_type: regular
+num_partition: 1
+layer_type: weight
+bn_type: masked

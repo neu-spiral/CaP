@@ -15,34 +15,44 @@ import numpy as np
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, conv_layer, stride=1, affine=True):
+    def __init__(self, in_planes, planes, conv_layer, bn_layer, stride=1, num_partition=1):
         super(BasicBlock, self).__init__()
         self.conv1 = conv_layer(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes, affine=affine)
         self.conv2 = conv_layer(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes, affine=affine)
-
+        if num_partition == 1:
+            self.bn1 = bn_layer(planes)
+            self.bn2 = bn_layer(planes)
+        else:
+            self.bn1 = bn_layer(planes,num_partition)
+            self.bn2 = bn_layer(planes,num_partition)
+            
+        #self.bn1 = BatchNorm2dPartition(planes,num_partition)
+        #self.bn1 = nn.BatchNorm2d(planes)
+        
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
-            self.shortcut = nn.Sequential(
-                conv_layer(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes, affine=affine)
-            )
-
+            if num_partition == 1:
+                self.shortcut = nn.Sequential(
+                    conv_layer(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                    bn_layer(self.expansion*planes)
+                )
+            else:
+                self.shortcut = nn.Sequential(
+                    conv_layer(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
+                    bn_layer(self.expansion*planes, num_partition)
+                )
+                
     def forward(self, x):
-        
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
+        
+        out += self.shortcut(x)
+        out = F.relu(out)
         
         #out_cpu = out.cpu().detach().numpy()
         #print(out_cpu.shape)
         #for i in range(out_cpu.shape[1]):
         #    print(i, np.sum(out_cpu[:,i,:,:]))
-            
-        out += self.shortcut(x)
-        out = F.relu(out)
-        
-        #np.sum(weight_copy[i,:,:,:])
         
         
         return out
@@ -54,17 +64,17 @@ class Bottleneck(nn.Module):
     def __init__(self, in_planes, planes, conv_layer, stride=1):
         super(Bottleneck, self).__init__()
         self.conv1 = conv_layer(in_planes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
+        self.bn1 = BatchNorm2dPartition(planes,num_partition)
         self.conv2 = conv_layer(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
+        self.bn2 = BatchNorm2dPartition(planes,num_partition)
         self.conv3 = conv_layer(planes, self.expansion*planes, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
+        self.bn3 = BatchNorm2dPartition(self.expansion*planes,num_partition)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion*planes:
             self.shortcut = nn.Sequential(
                 conv_layer(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                BatchNorm2dPartition(self.expansion*planes,num_partition)
             )
 
     def forward(self, x):
@@ -78,15 +88,16 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, conv_layer, num_classes=10, num_filters=512, affine=True):
+    def __init__(self, block, num_blocks, conv_layer, bn_layer, num_classes=10, num_filters=512, num_partition=1):
         super(ResNet, self).__init__()
         self.in_planes = 64
         self.conv_layer = conv_layer
+        self.bn_layer = bn_layer
         self.shrink = num_filters/512
-        self.affine = affine
+        self.num_partition = num_partition
         
         self.conv1 = conv_layer(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64, affine=affine)
+        self.bn1 = nn.BatchNorm2d(64)
         # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, int(64*self.shrink),  num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, int(128*self.shrink), num_blocks[1], stride=2)
@@ -98,7 +109,7 @@ class ResNet(nn.Module):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
         for stride in strides:
-            layers.append(block(self.in_planes, planes, self.conv_layer, stride, self.affine))
+            layers.append(block(self.in_planes, planes, self.conv_layer, self.bn_layer, stride, self.num_partition))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
@@ -110,17 +121,19 @@ class ResNet(nn.Module):
         out = self.layer4(out)
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
+        
         #out_cpu = out.cpu().detach().numpy()
         #print(out_cpu.shape)
         #for i in range(out_cpu.shape[1]):
         #    print(i, np.sum(out_cpu[:,i]))
-        
-        #np.sum(weight_copy[i,:,:,:])
+        # 
+        # np.sum(weight_copy[i,:,:,:])
         out = self.linear(out)
+        #np.sum(weight_copy[i,:,:,:])
         return out
 
-def resnet18(conv_layer, **kwargs):
-    return ResNet(BasicBlock, [2,2,2,2], conv_layer, kwargs['num_classes'])
+def resnet18(conv_layer, bn_layer, **kwargs):
+    return ResNet(BasicBlock, [2,2,2,2], conv_layer, bn_layer, num_classes=kwargs['num_classes'], num_partition=kwargs['num_partition'])
 
 def resnet34(**kwargs):
     rob = kwargs['robustness'] if 'robustness' in kwargs else False
