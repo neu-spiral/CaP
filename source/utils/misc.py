@@ -10,15 +10,45 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import _LRScheduler
 
+import models
 from ..models.masknet import *
+
+def get_model_from_code(configs):
+    
+    num_classes=configs['num_classes']
+    
+    if configs['data_code'] == 'flash':
+        modelA = CoordNet(input_dim=1, output_dim=num_classes)
+        modelB = CameraNet(input_dim=1, output_dim=num_classes)
+        modelC = LidarNet(input_dim=1, output_dim=num_classes)
+        print("FREEZING THE WEIGHTS BEFORE FUSION LAYERS")
+        for c in modelA.children():
+            for param in c.parameters():
+                param.requires_grad = False
+        for c in modelB.children():
+            for param in c.parameters():
+                param.requires_grad = False
+        for c in modelC.children():
+            for param in c.parameters():
+                param.requires_grad = False
+        model = models.__dict__[configs['model']](modelA, modelB, modelC, 
+                                                  nb_classes=num_classes)
+        
+    else:
+        cl = get_layers(configs['layer_type'])
+        bn = get_bn_layers(configs['bn_type'])
+        model = models.__dict__[configs['model']](cl, get_bn_layers('regular'),
+                                                       num_classes=num_classes,
+                                                       )
+    return model
 
 def get_layers(layer_type):
     """
     Returns: (conv_layer)
     """
-    if layer_type == "weight":
+    if layer_type == "regular":
         return nn.Conv2d
-    elif layer_type == "mask":
+    elif layer_type == "masked":
         return MaskConv2d
     else:
         raise ValueError("Incorrect layer type")
@@ -37,11 +67,12 @@ def get_bn_layers(bn_type):
 def set_optimizer(configs, model, train_loader, opt, lr, epochs):
     """ bag of tricks set-ups"""
     configs['smooth'] = configs['smooth_eps'] > 0.0
-    configs['mixup'] = configs['alpha'] > 0.0
+    #configs['mixup'] = configs['alpha'] > 0.0
 
     optimizer_init_lr = configs['warmup_lr'] if configs['warmup'] else lr
     if opt == 'sgd':
-        optimizer = torch.optim.SGD(model.parameters(), optimizer_init_lr, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.SGD(model.parameters(), optimizer_init_lr, momentum=0.9, weight_decay=5e-4)
+        # cifar100: 5e-4; others: 1e-4
     else:
         optimizer = torch.optim.Adam(model.parameters(), optimizer_init_lr)
     
@@ -53,21 +84,24 @@ def set_optimizer(configs, model, train_loader, opt, lr, epochs):
         """Set the learning rate of each parameter group to the initial lr decayed
                 by gamma once the number of epoch reaches one of the milestones
         """
-        gamma=0.1
+        
         if configs['data_code'] == 'mnist':
+            gamma=0.1
             if epochs <= 50:
                 epoch_milestones = [20, 40]
             else:
                 epoch_milestones = [75, 90]
         elif configs['data_code'] == 'cifar10':
+            gamma=0.1
             if epochs > 150:
                 epoch_milestones = [80, 150]
             else:
                 epoch_milestones = [65, 90]
         elif configs['data_code'] == 'cifar100':
+            gamma=0.2
             # Adversarial Concurrent Training: Optimizing Robustness and Accuracy Trade-off of Deep Neural Networks
             if epochs > 150:
-                epoch_milestones = [80, 150]
+                epoch_milestones = [60, 120, 160]
             else:
                 epoch_milestones = [65, 90]
         scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[i * len(train_loader) for i in epoch_milestones], gamma=gamma)
@@ -123,7 +157,7 @@ def mixup_data(x, y, alpha=1.0):
 
     mixed_x = lam * x + (1 - lam) * x[index, :]
     y_a, y_b = y, y[index]
-    return mixed_x, y_a, y_b, lam
+    return (mixed_x,), y_a, y_b, lam
 
 
 def mixup_criterion(criterion, pred, y_a, y_b, lam, smooth):

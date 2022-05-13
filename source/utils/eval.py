@@ -51,17 +51,20 @@ def get_accuracy(model, dataloader, criterion, cepoch):
     model.eval()
 
     with torch.no_grad():
-        for batch_idx, (data, target) in enumerate(dataloader):
-            data, target = data.to(device), target.to(device)
+        for batch_idx, batch in enumerate(dataloader):
+            data   = ()
+            for piece in batch[:-1]:
+                data += (piece.to(device),)
+            target = batch[-1].to(device)
 
             # compute output
-            output = model(data)
+            output = model(*data)
             loss = criterion(output, target)
 
             # measure accuracy and record loss
             acc1 = accuracy(output, target, topk=(1,))
-            losses.update(loss.item(), data.size(0))
-            top1.update(acc1[0].item(), data.size(0))
+            losses.update(loss.item(), target.size(0))
+            top1.update(acc1[0].item(), target.size(0))
     
     print("Epoch-[{:03d}]: Test loss: {:.2f}, acc: {:.2f}.".format(cepoch, losses.avg, top1.avg,))
     

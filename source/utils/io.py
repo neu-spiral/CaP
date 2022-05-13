@@ -18,35 +18,40 @@ def load_model(filepath):
     model = torch.load(filepath)
     return model
 
-def load_state_dict(model, filepath, num_partition=1, bn_type='regular'):
-    device = next(model.parameters()).device
+def load_state_dict(model, state_dict, bn_par=False, partition={}):
     own_state = model.state_dict()
-    
-    state_dict = torch.load(filepath, map_location=device)
-    state_dict = state_dict['state_dict'] if 'state_dict' in state_dict else state_dict
-    
-    
     # handle batch norm
-    if bn_type=='masked':
+    if bn_par:
         for name, param in own_state.items():
             if 'bn' in name:
                 if 'tracked' in name: continue
+                
                 param = param.data
                 namepiece = name.split('.')
                 try: i = int(namepiece[-2]) 
                 except: continue
 
+                # get layer name of the source model
                 name_s = '.'.join(namepiece[:-3])+'.'+namepiece[-1]
                 if name_s not in state_dict: 
                     continue
-                
                 param_s = state_dict[name_s].data
-                #own_state[name].copy_(param_s[i::num_partition])
-                k, m = divmod(param_s.shape[0], num_partition)
-                own_state[name].copy_(param_s[i*k+min(i,m) : (i+1)*k+min(i+1, m)])
+                
+                # get layer name of the corresponding conv layer
+                name_par = name_s.replace('bn','conv')
+                name_par = name_par.replace('bias','weight')
+                name_par = name_par.replace('running_mean','weight')
+                name_par = name_par.replace('running_var','weight')
+                name_par = name_par.replace('shortcut.1','shortcut.0')
+                
+                #print(name, param.shape, partition)
+                #k, m = divmod(param_s.shape[0], partition)
+                #own_state[name].copy_(param_s[i*k+min(i,m) : (i+1)*k+min(i+1, m)])
+                own_state[name].copy_(param_s[partition[name_par]['filter_id'][i]])
     
     # for others
     for name, param in state_dict.items():
+        name = name.replace('module.','')
         if name not in own_state:
             #print('not found: ',name)
             continue

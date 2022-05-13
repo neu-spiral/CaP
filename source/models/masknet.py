@@ -5,14 +5,14 @@ import torch.nn.functional as F
 from torch.nn import Parameter
 
 class BatchNorm2dPartition(nn.Module):
-    def __init__(self, planes, num_partition=1):
+    def __init__(self, planes, num_partition=1, momentum=0.1):
         super(BatchNorm2dPartition, self).__init__()
         self.num_partition = num_partition
         # To do: handle non-divisable
         #self.len_partition = int(planes / num_partition)
         self.k, self.m = divmod(planes, num_partition)
         
-        self.bn_list = nn.ModuleList(nn.BatchNorm2d(self.k+int(i<self.m)) for i in range(num_partition))
+        self.bn_list = nn.ModuleList(nn.BatchNorm2d(self.k+int(i<self.m), momentum=momentum) for i in range(num_partition))
         
     def forward(self, x):
         #out_list = [bn(x[:,i::self.num_partition,:,:]) for i, bn in enumerate(self.bn_list)]

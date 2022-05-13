@@ -10,6 +10,9 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
     batch_loss   = AverageMeter()
     batch_comm   = AverageMeter()
     
+    if comm:
+        partition = configs['partition']
+    
     n_data = configs['batch_size'] * len(data_loader)
     
     if ADMM is not None: 
@@ -17,21 +20,25 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
         
     start_time = time.time()
     pbar = tqdm(enumerate(data_loader), total=n_data/configs['batch_size'], ncols=150)
-    for batch_idx, (data, target) in pbar:
+    
+    for batch_idx, batch in pbar:
            
-        data   = data.to(configs['device'])
-        target = target.to(configs['device'])
+        data   = ()
+        for piece in batch[:-1]:
+            data += (piece.to(configs['device']),)
+        target = batch[-1].to(configs['device'])
         total_loss = 0
         comm_loss = 0
-            
+        comp_loss = 0
+        
         optimizer.zero_grad()
         
-        if configs['mixup']:
-            data, target_a, target_b, lam = mixup_data(data, target, configs['alpha'])
+        if configs['mix_up']:
+            data, target_a, target_b, lam = mixup_data(*data, target, configs['alpha'])
         
-        output = model(data)
+        output = model(*data)
         criterion = CrossEntropyLossMaybeSmooth(smooth_eps=configs['smooth_eps']).to(configs['device'])
-        if configs['mixup']:
+        if configs['mix_up']:
             loss = mixup_criterion(criterion, output, target_a, target_b, lam, configs['smooth'])
         else:
             loss = criterion(output, target, smooth=configs['smooth'])
@@ -46,7 +53,9 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
                 if name in ADMM.prune_ratios:
                     comm_cost = torch.abs(W) * configs['comm_costs'][name]
                     comm_loss += comm_cost.view(comm_cost.size(0), -1).sum()
-            total_loss += configs['lambda_comm'] * comm_loss
+                    for i in range(partition[name]['num']):
+                        comp_loss = max(comp_loss, torch.abs(W).view(W.size(0), -1)[partition[name]['filter_id'][i],:].sum())
+            total_loss += configs['lambda_comm'] * comm_loss + configs['lambda_comp'] * comp_loss
         
         total_loss.backward() # Back Propagation
         
@@ -66,10 +75,11 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
             scheduler.step()
 
         acc1 = accuracy(output, target, topk=(1,))
-        batch_loss.update(loss.item(), data.size(0))
-        batch_comm.update(comm_loss.item() if comm_loss else comm_loss, data.size(0))
-        batch_acc.update(acc1[0].item(), data.size(0))
+        batch_loss.update(loss.item(), target.size(0))
+        batch_comm.update(comm_loss.item() if comm_loss else comm_loss, target.size(0))
+        batch_acc.update(acc1[0].item(), target.size(0))
 
+        
         # # # preparation log information and print progress # # #
         msg = 'Train Epoch: {cepoch} [ {cidx:5d}/{tolidx:5d} ({perc:2d}%)] Loss:{loss:.4f} CommLoss:{commloss:.4f} Acc:{acc:.4f}'.format(
                         cepoch = cepoch,  

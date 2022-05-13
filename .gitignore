@@ -9,4 +9,5 @@
 *.vscode
 logs
 assets/data/
+assets/models/
 scripts

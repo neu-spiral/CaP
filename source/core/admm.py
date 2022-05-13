@@ -25,7 +25,8 @@ class ADMM:
         self.prune_ratio = config_dict['prune_ratio']
         self.prune_ratios = {}
         self.device = config_dict['device']
-        
+        self.par_first_layer = config_dict['par_first_layer']
+        self.partition = config_dict['partition']
         self.init(model)
 
     def init(self, model):
@@ -37,11 +38,12 @@ class ADMM:
         """
         # setup pruning ratio
         self.prune_ratios = {}
+        #counter = 0
         for name, weight in model.named_parameters():
-            if (len(weight.size()) == 4):
-                if name == 'conv1.weight' or name == 'conv1.mask': continue
-                if self.target in name:
-                    self.prune_ratios[name] = self.prune_ratio
+            if name in self.partition:
+                #counter += 1
+                #if not self.par_first_layer and counter==1: continue
+                self.prune_ratios[name] = self.prune_ratio[name]
         
         # setup rho
         for k, v in self.prune_ratios.items():
@@ -122,9 +124,8 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
     #cross_x = args.cross_x
     #cross_f = args.cross_f
     #percent = prune_ratio * 100 * args.ratioexp
-    
     percent = prune_ratio * 100
-    # print(percent)
+    
     if (sparsity_type == "irregular"):
         weight_temp = np.abs(
             weight)  # a buffer that holds weights with absolute values
@@ -162,7 +163,7 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
         num_partition = int(1 / (1-prune_ratio))
         weight_copy = np.zeros(weight.shape)
         k1, m1 = divmod(weight.shape[0], num_partition)
-        k2, m2 = divmod(weight.shape[0], num_partition)
+        k2, m2 = divmod(weight.shape[1], num_partition)
         for i in range(num_partition):
             #weight_copy[i::num_partition,i::num_partition,:,:] = weight[i::num_partition,i::num_partition,:,:]
             weight_copy[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:] = weight[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:]
@@ -172,6 +173,8 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
         shape = weight.shape
         weight3d = weight.reshape(weight.shape[0], weight.shape[1], -1)
         shape3d = weight3d.shape
+        if len(shape3d) == 2:
+            weight3d = weight3d[:,:,None]
         kernel_l2_norm = LA.norm(weight3d, 2, axis=2)
         percentile = np.percentile(kernel_l2_norm, percent)
         under_threshold = kernel_l2_norm <= percentile

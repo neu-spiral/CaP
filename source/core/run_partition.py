@@ -58,12 +58,14 @@ def get_args():
     parser.add_argument('--distill-alpha', default=1, type=float, help='weight for distillation loss')
    
     # partition
-    parser.add_argument('-np', '--num_partition', default=0, type=int, help='number of partition')
-    parser.add_argument('-lt', '--layer-type', default='', type=str, help='weight/mask')
+    parser.add_argument('-pfl','--par-first-layer', action='store_true', default=False, help='lable smooth')
+    parser.add_argument('-np', '--num_partition', default='', type=str, help='number of partition')
+    parser.add_argument('-lt', '--layer-type', default='', type=str, help='regular/masked')
     parser.add_argument('-bt', '--bn-type', default='', type=str, help='regular/masked')
     parser.add_argument('--num-students', type=int, default=0, help='number of students')
     parser.add_argument('--filter-sizes', metavar='N', default='', help ="Ex, for 2 students --filter_sizes 64,64")
-    parser.add_argument('-lc','--lambda-comm', default=0, type=float, help='the coefficient of the comm objective')  
+    parser.add_argument('-lcm','--lambda-comm', default=0, type=float, help='the coefficient of the comm objective')  
+    parser.add_argument('-lcp','--lambda-comp', default=0, type=float, help='the coefficient of the comp objective')  
     args = parser.parse_args()
 
     return args
@@ -77,6 +79,7 @@ def main():
     config_dict['device'] = args.device
     
     # partition
+    config_dict['par_first_layer'] = args.par_first_layer
     if args.num_partition:
         config_dict['num_partition'] = args.num_partition
     if args.layer_type:
@@ -85,6 +88,7 @@ def main():
         config_dict['bn_type'] = args.bn_type
     if args.lambda_comm:
         config_dict['lambda_comm'] = args.lambda_comm
+    config_dict['lambda_comp'] = args.lambda_comp
     # distillation
     config_dict['distill_model'] = args.distill_model
     config_dict['distill_loss'] = args.distill_loss
