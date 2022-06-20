@@ -20,9 +20,9 @@ import torch.nn.functional as F
 from sklearn.preprocessing import PolynomialFeatures
 
 
-# CNN based model for Coordinate modality - Infocom version
+# CNN based model for Coordinate modality - Infocom version: 9287640 params included all
 class CoordNet(nn.Module):
-    def __init__(self, input_dim, output_dim, fusion ='ultimate'):
+    def __init__(self, input_dim, output_dim, fusion ='penultimate'):
         super(CoordNet, self).__init__()
 
         self.conv1 = nn.Conv1d(input_dim, 20, kernel_size=2,  padding="same")
@@ -72,7 +72,7 @@ class CoordNet(nn.Module):
 
 # CNN based model for Image modality - Infocom version
 class CameraNet(nn.Module):
-            def __init__(self, input_dim, output_dim, fusion='ultimate'):
+            def __init__(self, input_dim, output_dim, fusion='penultimate'):
                 super(CameraNet, self).__init__()
                 dropProb = 0.25
                 channel = 32
@@ -137,7 +137,7 @@ class CameraNet(nn.Module):
 
 # CNN based model for LiDAR modality - Infocom version
 class LidarNet(nn.Module):
-            def __init__(self, input_dim, output_dim, fusion='ultimate'):
+            def __init__(self, input_dim, output_dim, fusion='penultimate'):
                 super(LidarNet, self).__init__()
                 dropProb1 = 0.3
                 dropProb2 = 0.2
@@ -330,7 +330,7 @@ class InfoFusionThree(nn.Module):
         self.softmax = nn.Softmax()
 
 
-        self.classifier = nn.Linear(3*nb_classes, nb_classes) # change
+        #self.classifier = nn.Linear(3*nb_classes, nb_classes) # change
 
         #ORIGINAL ARCHITECTURE (INFOCOM)
         # self.hidden1 = nn.Linear(832, 1024)
@@ -345,8 +345,8 @@ class InfoFusionThree(nn.Module):
 
         self.hidden0 = nn.Linear(832, 2048)
         self.bn0 = nn.BatchNorm1d(2048)
-        self.hidden01 = nn.Linear(2048, 1024)
-        self.bn01 = nn.BatchNorm1d(1024)
+        #self.hidden01 = nn.Linear(2048, 1024)
+        #self.bn01 = nn.BatchNorm1d(1024)
 
         self.hidden1 = nn.Linear(2048, 1024)
         self.bn1 = nn.BatchNorm1d(1024)
@@ -363,13 +363,13 @@ class InfoFusionThree(nn.Module):
     def forward(self, x1, x2, x3):
         x1 = self.modelA(x1)  # clone to make sure x is not changed by inplace methods
         x1 = x1.view(x1.size(0), -1)
-
+        
         x2 = self.modelB(x2)
         x2 = x2.view(x2.size(0), -1)
 
         x3 = self.modelC(x3)
         x3 = x3.view(x3.size(0), -1)
-
+        
         x = torch.cat((x1, x2, x3), dim=1)
 
         if self.fusion == 'penultimate':
@@ -391,6 +391,7 @@ class InfoFusionThree(nn.Module):
             x = self.relu(self.hidden4(x))
             x = self.bn4(x)
             x = self.out(x)  # no softmax: CrossEntropyLoss()
+            
             return x
         x = self.classifier(x) # no softmax: CrossEntropyLoss()
         return x

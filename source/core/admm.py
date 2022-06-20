@@ -23,7 +23,6 @@ class ADMM:
         
         self.rhos = {}
         self.prune_ratio = config_dict['prune_ratio']
-        self.prune_ratios = {}
         self.device = config_dict['device']
         self.par_first_layer = config_dict['par_first_layer']
         self.partition = config_dict['partition']
@@ -107,7 +106,7 @@ def L1_pruning(weight, prune_ratio, sparsity_type):
         weight).cuda()
 
 
-def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=1):
+def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=1, partition=''):
     """
     weight pruning [irregular,column,filter]
     Args:
@@ -160,18 +159,17 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
             expand_above_threshold).to(device), torch.from_numpy(weight).to(device)
 
     elif (sparsity_type == 'partition'):
-        num_partition = int(1 / (1-prune_ratio))
-        weight_copy = np.zeros(weight.shape)
-        k1, m1 = divmod(weight.shape[0], num_partition)
-        k2, m2 = divmod(weight.shape[1], num_partition)
+        num_partition = partition[name]['num']
+        shape = weight.shape
+        weight2d = np.zeros(shape).reshape(shape[0],shape[1], -1)
         for i in range(num_partition):
             #weight_copy[i::num_partition,i::num_partition,:,:] = weight[i::num_partition,i::num_partition,:,:]
-            weight_copy[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:] = weight[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2),:,:]
-        return num_partition, torch.from_numpy(weight_copy).float().to(device)    
+            weight2d[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] = weight[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] 
+        return num_partition, torch.from_numpy(weight2d).float().to(device)    
     
     elif (sparsity_type == 'kernel'):
         shape = weight.shape
-        weight3d = weight.reshape(weight.shape[0], weight.shape[1], -1)
+        weight3d = weight.reshape(shape[0], shape[1], -1)
         shape3d = weight3d.shape
         if len(shape3d) == 2:
             weight3d = weight3d[:,:,None]
@@ -233,7 +231,7 @@ def hard_prune(ADMM, model, sparsity_type, option=None, cross_x=4, cross_f=1):
         if option == None:
             _, cuda_pruned_weights = weight_pruning(
                 W, name, ADMM.prune_ratios[name], sparsity_type, cross_x,
-                cross_f)  # get sparse model in cuda
+                cross_f, ADMM.partition)  # get sparse model in cuda
 
         elif option == "random":
             _, cuda_pruned_weights = random_pruning(W,ADMM.prune_ratios[name],sparsity_type)
@@ -251,7 +249,7 @@ def admm_initialization(config_dict, ADMM, model, cross_x=4, cross_f=1):
         if name in ADMM.prune_ratios:
             _, updated_Z = weight_pruning(
                 W, name, ADMM.prune_ratios[name], sparsity_type, cross_x,
-                cross_f)  # Z(k+1) = W(k+1)+U(k)  U(k) is zeros her
+                cross_f, ADMM.partition)  # Z(k+1) = W(k+1)+U(k)  U(k) is zeros her
             ADMM.ADMM_Z[name] = updated_Z
 
 
@@ -277,7 +275,7 @@ def z_u_update(config_dict,
             ADMM.ADMM_Z[name] = W.detach() + ADMM.ADMM_U[name].detach()  # Z(k+1) = W(k+1)+U[k]
 
             _, updated_Z = weight_pruning(ADMM.ADMM_Z[name], name, ADMM.prune_ratios[name], sparsity_type, 
-                cross_x, cross_f)  # equivalent to Euclidean Projection
+                cross_x, cross_f, ADMM.partition)  # equivalent to Euclidean Projection
             ADMM.ADMM_Z[name] = updated_Z
             ADMM.ADMM_U[name] = W.detach() - ADMM.ADMM_Z[name].detach() + ADMM.ADMM_U[name].detach()  # U(k+1) = W(k+1) - Z(k+1) +U(k)
 

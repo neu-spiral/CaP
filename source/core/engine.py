@@ -1,4 +1,3 @@
-import models
 from .trainer import *
 from ..utils.dataset import *
 from ..utils.io import *
@@ -8,7 +7,9 @@ from ..utils.masks import *
 from ..utils.calculate_flops.calflops import calflops
 from .admm import *
 
+import time
 from torch.autograd import Variable
+from torchsummary import summary
 
 class MoP:
     """
@@ -23,29 +24,28 @@ class MoP:
         # Handle dataset
         self.train_loader, self.test_loader = get_dataset_from_code(configs['data_code'], configs['batch_size'])
 
+        # Initialize evaluation metrics
+        self.evalHelper   = EvalHelper(configs['data_code'])
+        
         # Load device
         self.device = configs["device"]
         
         # Create model
         self.model = get_model_from_code(configs).to(self.device)
         
-
         # Load pretrained weights
         if 'load_model' in configs:
             state_dict = torch.load(get_model_path("{}".format(configs["load_model"])), map_location=self.device)
             self.model = load_state_dict(self.model, 
-                                         state_dict['state_dict'] if 'state_dict' in state_dict else state_dict,
-                                         )
+                                         state_dict['model_state_dict'] if 'model_state_dict' in state_dict 
+                                         else state_dict['state_dict'] if 'state_dict' in state_dict else state_dict,)
+            criterion,_,_ = set_optimizer(self.configs, self.model, self.train_loader, self.configs['optimizer'], 
+                                          self.configs['learning_rate'], self.configs['epochs'])
+            acc = self.test_model(self.model, criterion)
         else:
             print('standard train')
-            print(self.model)
+            #self.model.apply(init_weights)
             self.train()
-        
-        # config partitions and prune_ratio
-        self.configs = partition_generator(configs, self.model)
-            
-        # setup communication costs
-        self.configs['comm_costs'] = set_communication_cost(self.model, self.configs['partition'],)
         
         # Print the model
         if print_model:
@@ -59,36 +59,54 @@ class MoP:
             print(f"TOTAL NUMBER OF PARAMETERS = {n_parameters}")
             print("-" * 40)
         
+        # Get input shape from data_code
+        self.input_var = get_input_from_code(configs)
+        
+        # Config partitions and prune_ratio
+        self.configs = partition_generator(configs, self.model)
+            
+        # Compute output size of each layer
+        self.configs['partition'] = featuremap_summary(self.model, self.configs['partition'], self.input_var)
+        
+        # Setup communication costs
+        self.configs['comm_costs'] = set_communication_cost(self.model, self.configs['partition'],)
+        
         # Calculate flops
-        input_np = np.random.uniform(0, 1, (1, 3, 32, 32))
-        self.input_var = Variable(torch.FloatTensor(input_np), requires_grad=False).to(self.device)
         calflops(self.model, self.input_var)
+        
+        # Test before prune
+        test_partition(self.model, partition=self.configs['partition'])
         
     def prune(self):
         nepoch = self.configs['epochs']
-        optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
+        criterion, optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
                                              self.configs['optimizer'], self.configs['learning_rate'], nepoch)
         
         # Initializing ADMM; if not admm, do hard pruning only
         admm = ADMM(self.configs, self.model, rho=self.configs['rho']) if self.configs['admm'] else None
-        
-        
+
         # prune
         for cepoch in range(0, nepoch+1):
             if cepoch>0:
                 print('Learning rate: {:.4f}'.format(get_lr(optimizer)))
-                standard_train(self.configs, cepoch, self.model, self.train_loader, optimizer, scheduler, ADMM=admm, comm=True)
-            acc = self.test_model(self.model, cepoch)
+                standard_train(self.configs, cepoch, self.model, self.train_loader, 
+                               criterion, optimizer, scheduler, ADMM=admm, comm=True)
+            acc = self.test_model(self.model, criterion, cepoch)
             
         # hard prune
         hard_prune(admm, self.model, self.configs['sparsity_type'], option=None)
         
+        # test sparsity
         if self.configs['sparsity_type']=='kernel':
             test_kernel_sparsity(self.model, partition=self.configs['partition'])
             test_partition(self.model, partition=self.configs['partition'])
         else:
             test_filter_sparsity(self.model)
-        save_model(self.model, get_model_path("{}.pt".format('.'.join(self.model_file.split('.')[:-1])+'_hardprune')))
+        
+        # plot first conv layer
+        plot_layer(self.model, self.configs['partition'], layer_id=10,
+                   savepath=get_fig_path("{}".format('.'.join(self.model_file.split('.')[:-1]))))
+        #save_model(self.model, get_model_path("{}.pt".format('.'.join(self.model_file.split('.')[:-1])+'_hardprune')))
                 
     def finetune(self):
         # Todo: seperate BN
@@ -108,21 +126,21 @@ class MoP:
         print("=" * 40)
         calflops(self.model, self.input_var, self.configs['prune_ratio'])
         
-        
         # get mask
         masks = get_model_mask(model=self.model)
     
         # masked retrain
         nepoch = self.configs['retrain_ep']
-        optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
+        criterion, optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
                                              self.configs['retrain_opt'], self.configs['retrain_lr'], nepoch)
     
         best = 0
         for cepoch in range(0, nepoch+1):
             if cepoch>0:
                 print('Learning rate: {:.4f}'.format(get_lr(optimizer)))
-                standard_train(self.configs, cepoch, self.model, self.train_loader, optimizer, scheduler, masks=masks)
-            acc = self.test_model(self.model, cepoch)
+                standard_train(self.configs, cepoch, self.model, self.train_loader, 
+                               criterion, optimizer, scheduler, masks=masks)
+            acc = self.test_model(self.model, criterion, cepoch)
             if acc > best:
                 best = acc
                 save_model(self.model, get_model_path("{}".format(self.model_file)))
@@ -135,7 +153,7 @@ class MoP:
     
     def pruneMask(self):
         nepoch = self.configs['epochs']
-        optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
+        criterion, optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
                                              self.configs['optimizer'], self.configs['learning_rate'], nepoch)
         
         # Initializing ADMM; if not admm, do hard pruning only
@@ -148,8 +166,9 @@ class MoP:
         for cepoch in range(0, nepoch+1):
             if cepoch>0:
                 print('Learning rate: {:.4f}'.format(get_lr(optimizer)))
-                standard_train(self.configs, cepoch, self.model, self.train_loader, optimizer, scheduler, ADMM=admm, comm=True)
-            acc = self.test_model(self.model, cepoch)
+                standard_train(self.configs, cepoch, self.model, self.train_loader, criterion, 
+                               optimizer, scheduler, ADMM=admm, comm=True)
+            acc = self.test_model(self.model, criterion, cepoch)
             
         # hard prune
         hard_prune(admm, self.model, self.configs['sparsity_type'], option=None)
@@ -170,15 +189,16 @@ class MoP:
     
         # masked retrain
         nepoch = self.configs['retrain_ep']
-        optimizer, scheduler = set_optimizer(self.configs, self.model_r, self.train_loader, \
+        criterion, optimizer, scheduler = set_optimizer(self.configs, self.model_r, self.train_loader, \
                                              self.configs['retrain_opt'], self.configs['retrain_lr'], nepoch)
     
         best = 0
         for cepoch in range(0, nepoch+1):
             if cepoch>0:
                 print('Learning rate: {:.4f}'.format(get_lr(optimizer)))
-                standard_train(self.configs, cepoch, self.model_r, self.train_loader, optimizer, scheduler, masks=masks)
-            acc = self.test_model(self.model_r, cepoch)
+                standard_train(self.configs, cepoch, self.model_r, self.train_loader, 
+                               criterion, optimizer, scheduler, masks=masks)
+            acc = self.test_model(self.model_r, criterion, cepoch)
             if acc > best:
                 best = acc
                 save_model(self.model_r, get_model_path("{}".format(self.model_file)))
@@ -187,19 +207,20 @@ class MoP:
             
     def train(self):
         nepoch = self.configs['epochs']
-        optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
+        criterion, optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
                                              self.configs['optimizer'], self.configs['learning_rate'], nepoch)
         best = 0
         for cepoch in range(0, nepoch+1):
-            print('Learning rate: {:.4f}'.format(get_lr(optimizer)))
-            standard_train(self.configs, cepoch, self.model, self.train_loader, optimizer, scheduler)
-            acc = self.test_model(self.model, cepoch)
+            if cepoch>0:
+                print('Learning rate: {:.4f}'.format(get_lr(optimizer)))
+                standard_train(self.configs, cepoch, self.model, self.train_loader, criterion, optimizer, scheduler)
+                
+            acc = self.test_model(self.model, criterion, cepoch)
             if acc > best:
                 best = acc
-                save_model(self.model, get_model_path("{}".format(self.model_file.split('.')[0]+'_teacher'+'.pt')))
+                save_model(self.model, get_model_path("{}".format(self.model_file.split('.')[0]+'.pt')))
     
-    def test_model(self, model, cepoch=0):
-        criterion = torch.nn.CrossEntropyLoss()
-        acc = get_accuracy(model, self.test_loader, criterion, cepoch)
+    def test_model(self, model, criterion, cepoch=0):
+        acc = self.evalHelper.get_accuracy(model, self.test_loader, criterion, cepoch)
         return acc
     

@@ -14,7 +14,7 @@ from thop import profile
 
 def calflops(model, inputs, prune_ratios=[]): 
     
-        
+    
     if not prune_ratios:
         prune_ratios = OrderedDict()
         with torch.no_grad():
@@ -23,7 +23,7 @@ def calflops(model, inputs, prune_ratios=[]):
     
     model.train(False)
     model.eval()
-    macs, params = profile(model, inputs=(inputs, ), rate = prune_ratios)
+    macs, params = profile(model, inputs=inputs, rate = prune_ratios)
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs * 2/1000000000)) # GMACs
     print('{:<30}  {:<8}'.format('Number of parameters: ', params/1000000)) # M
     #flops, params = get_model_complexity_info(model, (3, 32, 32), as_strings=True, print_per_layer_stat=False)

@@ -27,7 +27,7 @@ xentropy_weight: 1.
 warmup : False
 warmup_lr :  0.001
 warmup_epochs :  10
-mix_up :  False
+mix_up :  True
 alpha :  0.3
 smooth :  False
 smooth_eps :  0

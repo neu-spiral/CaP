@@ -66,6 +66,7 @@ def get_args():
     parser.add_argument('--filter-sizes', metavar='N', default='', help ="Ex, for 2 students --filter_sizes 64,64")
     parser.add_argument('-lcm','--lambda-comm', default=0, type=float, help='the coefficient of the comm objective')  
     parser.add_argument('-lcp','--lambda-comp', default=0, type=float, help='the coefficient of the comp objective')  
+    parser.add_argument('-co','--comm-outsize', action='store_true', default=False, help='consider output size')
     args = parser.parse_args()
 
     return args
@@ -80,6 +81,7 @@ def main():
     
     # partition
     config_dict['par_first_layer'] = args.par_first_layer
+    config_dict['comm_outsize'] = args.comm_outsize
     if args.num_partition:
         config_dict['num_partition'] = args.num_partition
     if args.layer_type:

@@ -1,0 +1,21 @@
+
+# define partitions for your network
+bn_partitions:
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+partitions:
+   hidden0.weight:
+     3
+   hidden1.weight:
+     3
+   hidden2.weight:
+     3
+   hidden3.weight:
+     3
+   hidden4.weight:
+     3
+
+   

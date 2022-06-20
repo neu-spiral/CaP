@@ -3,6 +3,7 @@ import torch
 from numpy import linalg as LA
 
 from .masks import *
+from PIL import Image
 
 def test_sparsity_mask(args,mask):
     """
@@ -251,53 +252,80 @@ def test_partition(model, partition):
 
     total_kernels = 0
     total_zeros = 0
-    total_comms = 0
-    total_comms_select = 0
-
+    total_interpk = 0
+    total_interpk_select = 0
+    total_interp = 0
+    total_interp_select = 0
+    total_comm_interp = 0
+    total_max_comm_interp = 0
     total_params = 0
-    total_params_select = 0
+    
 
-    for name, weight in model.named_parameters():
+    for name, W in model.named_parameters():
         if name in partition: # only consider conv layers
-            if name == 'conv1.weight': continue
-            weight = weight.cpu().detach().numpy()
+            #if name == 'conv1.weight': continue
+            weight = W.cpu().detach().numpy()
             shape = weight.shape
             kernel_size = 1 if len(shape)==2 else shape[2]*shape[3]
+            outsize = partition[name]['outsize']
             
             weight2d = weight.reshape(weight.shape[0], weight.shape[1], -1).sum(-1)
             
             cost_mask = np.ones(weight2d.shape)
             for i in range(partition[name]['num']):
                 cost_mask[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] = 0
-                
-            #k1, m1 = divmod(weight.shape[0], num_partition)
-            #k2, m2 = divmod(weight.shape[1], num_partition)
-            #for i in range(num_partition):
-            #    cost_mask[i*k1+min(i, m1):(i+1)*k1+min(i+1, m1),i*k2+min(i, m2):(i+1)*k2+min(i+1, m2)] = 0
-            kernels = weight.shape[0]*weight.shape[1]
-            zeros = np.sum(weight2d == 0)
-            comms = np.sum(cost_mask != 0)
-            comms_select = np.sum((weight2d*cost_mask) != 0)
+            weight_select = weight2d*cost_mask
             
+            kernels = shape[0]*shape[1]
+            kernels_zeros = np.sum(weight2d == 0)
+            interpk = np.sum(cost_mask != 0)
+            interpk_select = np.sum((weight_select) != 0)
+            
+            # check inter-p kernels per partition
+            comms_interp = []
+            for i in range(partition[name]['num']):
+                for j in range(partition[name]['num']):
+                    if i==j: continue
+                    comms_interp.append(np.sum((weight_select[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][j]]) != 0))
+            comms_interp = [x*outsize for x in comms_interp]
+            
+            # update
             total_kernels += kernels
-            total_zeros += zeros
-            total_comms += comms
-            total_comms_select += comms_select
+            total_zeros += kernels_zeros
+            total_interpk += interpk
+            total_interpk_select += interpk_select
+            total_interp += interpk * kernel_size
+            total_interp_select += interpk_select * kernel_size
+            total_comm_interp += sum(comms_interp)
+            total_max_comm_interp += max(comms_interp)
             total_params += kernels*kernel_size
-            total_params_select += comms_select*kernel_size
             
-            print("{}: total number of params:{}, interp-params:{}, density is: {:.4f}".format(name,
-        kernels*kernel_size, comms_select*kernel_size, comms_select/kernels))
+            print("{}: params:{}, interp-k:{}, interp-k(select):{}, max-interp-k(select):{}, outsize:{}, total-interp-comm:{}, max-interp-comm:{}".format(name, kernels*kernel_size, interpk, interpk_select, int(max(comms_interp)/outsize), outsize, sum(comms_interp), max(comms_interp)))
+            #print(comms_interp)
             
     print("---------------------------------------------------------------------------")
-    print("total number of params:{}, interp-params:{}, density is: {:.4f}".format(
-        total_params, total_params_select, total_params_select/total_params))
     print("total number of kernels:{}, zero-kernels:{}, kernel sparsity is: {:.4f}".format(
         total_kernels, total_zeros, total_zeros/total_kernels))
-    print("total number of comm-kernals: {}, selected: {}, select rate is: {:.4f}".format(
-        total_comms, total_comms_select, total_comms_select/total_comms))
-    print("===========================================================================\n\n")
+    print("total number of params:{}, total_interp:{}, total_interp_select:{}, total_interpk:{}, total_interpk_select:{}".format(total_params, total_interp, total_interp_select, total_interpk, total_interpk_select))
+    print("total_comms:{}, max-interp-comm:{}".format(total_comm_interp, total_max_comm_interp))
     
+    print("===========================================================================\n\n")
+
+def plot_layer(model, partition, layer_id=1, savepath=''):
+    counter = 0
+    for name, W in model.named_parameters():
+        if name in partition:
+            counter +=1
+            if counter == layer_id:
+                weight = W.cpu().detach().numpy()
+                shape = weight.shape
+                weight2d = np.abs(weight.reshape(weight.shape[0], weight.shape[1], -1).sum(-1))
+                weight2d[weight2d>0] = 255
+                #print(weight2d)
+                img = Image.fromarray(weight2d).convert("L")
+                img.save(savepath+'_'+name+'.png')
+                
+
 def test_filter_balance(model):
     """
 

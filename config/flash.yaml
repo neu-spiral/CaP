@@ -1,0 +1,38 @@
+device: cuda:0
+model: InfoFusionThree
+data_code: flash
+num_classes: 64
+model_file: test.pt
+
+epochs: 0
+batch_size: 128
+optimizer: adam
+lr_scheduler: cosine
+learning_rate: 0.1
+seed: 1234
+
+sparsity_type: kernel
+prune_ratio: 0.5
+admm: True
+admm_epochs: 3
+rho: 0.0001
+multi_rho: True
+retrain_bs: 128
+retrain_lr: 0.005
+retrain_ep: 50
+retrain_opt: adam
+
+xentropy_weight: 1.
+
+warmup : False
+warmup_lr :  0.01
+warmup_epochs :  10
+mix_up : True
+alpha :  0.3
+smooth :  False
+smooth_eps :  0
+save_last_model_only: False
+
+num_partition: 1
+layer_type: regular
+bn_type: regular

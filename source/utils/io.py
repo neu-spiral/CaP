@@ -53,7 +53,7 @@ def load_state_dict(model, state_dict, bn_par=False, partition={}):
     for name, param in state_dict.items():
         name = name.replace('module.','')
         if name not in own_state:
-            #print('not found: ',name)
+            print('not found: ',name)
             continue
         param = param.data
         own_state[name].copy_(param)
@@ -64,4 +64,8 @@ def load_state_dict(model, state_dict, bn_par=False, partition={}):
     
 def get_model_path(filename, idx=None):
     filepath = "{}/assets/models/{}".format(os.getcwd(), filename)
+    return filepath
+
+def get_fig_path(filename, idx=None):
+    filepath = "{}/assets/figs/{}".format(os.getcwd(), filename)
     return filepath

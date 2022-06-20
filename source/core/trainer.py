@@ -4,28 +4,28 @@ from ..utils.misc import *
 from ..utils.eval import *
 from .admm import *
 
-def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, ADMM=None, masks=None, comm=False):
+def standard_train(configs, cepoch, model, data_loader, criterion, optimizer, scheduler, ADMM=None, masks=None, comm=False):
 
     batch_acc    = AverageMeter()
     batch_loss   = AverageMeter()
     batch_comm   = AverageMeter()
+    evalHelper   = EvalHelper(configs['data_code'])
     
     if comm:
         partition = configs['partition']
-    
-    n_data = configs['batch_size'] * len(data_loader)
     
     if ADMM is not None: 
         admm_initialization(configs, ADMM=ADMM, model=model)
         
     start_time = time.time()
+    n_data = configs['batch_size'] * len(data_loader)
     pbar = tqdm(enumerate(data_loader), total=n_data/configs['batch_size'], ncols=150)
     
     for batch_idx, batch in pbar:
            
         data   = ()
         for piece in batch[:-1]:
-            data += (piece.to(configs['device']),)
+            data += (piece.float().to(configs['device']),)
         target = batch[-1].to(configs['device'])
         total_loss = 0
         comm_loss = 0
@@ -34,10 +34,10 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
         optimizer.zero_grad()
         
         if configs['mix_up']:
-            data, target_a, target_b, lam = mixup_data(*data, target, configs['alpha'])
+            data, target_a, target_b, lam = mixup_data(*data, y=target, alpha=configs['alpha'])
         
         output = model(*data)
-        criterion = CrossEntropyLossMaybeSmooth(smooth_eps=configs['smooth_eps']).to(configs['device'])
+        
         if configs['mix_up']:
             loss = mixup_criterion(criterion, output, target_a, target_b, lam, configs['smooth'])
         else:
@@ -52,7 +52,23 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
             for (name, W) in model.named_parameters():
                 if name in ADMM.prune_ratios:
                     comm_cost = torch.abs(W) * configs['comm_costs'][name]
-                    comm_loss += comm_cost.view(comm_cost.size(0), -1).sum()
+                    #v1: abs(W)*comm_cost
+                    comm_cost = comm_cost.view(comm_cost.size(0), -1).sum()
+                    if configs['comm_outsize']:
+                        comm_loss += comm_cost*partition[name]['outsize']
+                    else:
+                        comm_loss += comm_cost
+                    '''
+                    #v2: max(abs(W)*comm_cost)
+                    comm_cost = comm_cost.reshape(W.shape[0], W.shape[1], -1).sum(-1)
+                    for i in range(partition[name]['num']):
+                        for j in range(partition[name]['num']):
+                            if i==j: continue
+                            comm_loss = max(comm_loss, 
+                                            comm_cost[partition[name]['filter_id'][i][:,None],
+                                                      partition[name]['channel_id'][j]].sum())
+                    '''
+                    
                     for i in range(partition[name]['num']):
                         comp_loss = max(comp_loss, torch.abs(W).view(W.size(0), -1)[partition[name]['filter_id'][i],:].sum())
             total_loss += configs['lambda_comm'] * comm_loss + configs['lambda_comp'] * comp_loss
@@ -74,7 +90,7 @@ def standard_train(configs, cepoch, model, data_loader, optimizer, scheduler, AD
         else:
             scheduler.step()
 
-        acc1 = accuracy(output, target, topk=(1,))
+        acc1 = evalHelper.call(output, target)
         batch_loss.update(loss.item(), target.size(0))
         batch_comm.update(comm_loss.item() if comm_loss else comm_loss, target.size(0))
         batch_acc.update(acc1[0].item(), target.size(0))
