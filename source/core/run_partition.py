@@ -88,8 +88,7 @@ def main():
         config_dict['layer_type'] = args.layer_type
     if args.bn_type:
         config_dict['bn_type'] = args.bn_type
-    if args.lambda_comm:
-        config_dict['lambda_comm'] = args.lambda_comm
+    config_dict['lambda_comm'] = args.lambda_comm
     config_dict['lambda_comp'] = args.lambda_comp
     # distillation
     config_dict['distill_model'] = args.distill_model

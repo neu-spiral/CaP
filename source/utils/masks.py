@@ -5,19 +5,34 @@ import numpy as np
 import time
 def partition_generator(configs, model):
     partition = {}
-    
+    num_partition = {}
+        
     # get # partition for each layer
     if configs['num_partition'].isdigit():
-        num_partition = {}
         # Todo: automatically set bn_partition
+        ratio_partition, map_partition = [], []
         bn_partition = [int(configs['num_partition'])] * 9
-        for name, W in model.named_parameters():
-            if (len(W.size()) == 4): num_partition[name] = int(configs['num_partition'])
+        for name, W in model.named_parameters() + list({'inputs':None}.items()):
+            if (len(W.size()) == 4) or name=='inputs': 
+                num = int(configs['num_partition'])
+                maps = np.ones((num,num))
+                
+                num_partition[name] = num
+                ratio_partition[name] = [1]*num
+                map_partition = np.fill_diagonal(maps, 0)
+                
     elif os.path.exists(configs['num_partition']):
         with open(configs['num_partition'], "r") as stream:
             raw_dict = yaml.safe_load(stream)
-            num_partition = raw_dict['partitions']
+            
             bn_partition = raw_dict['bn_partitions']
+            ratio_partition = raw_dict['partitions']
+            map_partition = raw_dict['maps']
+            
+            print(ratio_partition,map_partition)
+            for name, key in ratio_partition.items():
+                ratio_partition[name] = key[0]
+                num_partition[name] = len(key[0])
     else:
         raise Exception("num_partition must be either a filepath or an integer")
     
@@ -27,20 +42,25 @@ def partition_generator(configs, model):
     # setup prune ratio
     pr, configs['prune_ratio'] = configs['prune_ratio'], {}
     for name, num in num_partition.items():
-        #configs['prune_ratio'][name] = 1-1./num
-        configs['prune_ratio'][name] = pr
+        ratio = ratio_partition[name]
+        configs['prune_ratio'][name] = 1 - sum(r**2 for r in ratio) / sum(ratio)**2
+        #configs['prune_ratio'][name] = pr
         
-    # setup selected kernel ids
+    # setup partition
+    ratio_prev = ratio_partition['inputs'] # for current channel ratio, which is equal to the previous filter ratio
+    
     for name, W in model.named_parameters():
         if name in num_partition and num_partition[name] > 1:
-            num = num_partition[name]
-            flag = True if name=='hidden0.weight' else False # only for FLASH dataset
-            filter_id = get_partition_from_code(configs['data_code'], W.shape[0], num)
-            channel_id = get_partition_from_code(configs['data_code'], W.shape[1], num, flag)
+            num, maps = num_partition[name], map_partition[name]
             
+            # setup selected kernel ids
+            filter_id  = get_partition_from_code(configs['data_code'], W.shape[0], ratio_partition[name])
+            channel_id = get_partition_from_code(configs['data_code'], W.shape[1], ratio_prev)
+            ratio_prev = ratio_partition[name]
             partition[name] = {'num': num, 
                                'filter_id': filter_id,
-                               'channel_id': channel_id,}
+                               'channel_id': channel_id,
+                               'maps': maps}
             
             # v0: split by 'jump'
             #own_state[name].copy_(param_s[i::num_partition])
@@ -57,16 +77,17 @@ def partition_generator(configs, model):
     configs['partition'] = partition    
     return configs
 
-def get_partition_from_code(dataset, shape, num, flag=False):
+def get_partition_from_code(dataset, shape, ratio):
     p_id = []
-    if dataset == 'flash' and flag:
-        p_len = [64, 256, 512]
-        p_ratio = np.cumsum([0.0]+[x/sum(p_len) for x in p_len])
-    else:
-        p_ratio = np.cumsum([0.0]+[1/num for _ in range(num)])
+    #if dataset == 'flash':
+    #    p_len = [64, 256, 512]
+    #    p_ratio = np.cumsum([0.0]+[x/sum(p_len) for x in p_len])
+    #else:
+    #    p_ratio = np.cumsum([0.0]+[1/num for _ in range(num)])
+    p_ratio = np.cumsum([0.0]+[x/sum(ratio) for x in ratio])
         
     p_range = np.array(range(shape))
-    for i in range(num-1):
+    for i in range(len(ratio)):
         p_id.append(p_range[int(p_ratio[i]*shape):int(p_ratio[i+1]*shape)])
     p_id.append(p_range[int(p_ratio[i+1]*shape):])    
                 
@@ -83,10 +104,19 @@ def set_communication_cost(model, partition):
         if name in partition:
             weight = W.cpu().detach().numpy()
             shape = weight.shape
-            cost_mask = np.ones(shape).reshape(shape[0],shape[1], -1)
             
+            #cost_mask = np.ones(shape).reshape(shape[0],shape[1], -1)
+            #for i in range(partition[name]['num']):
+            #    cost_mask[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] = 0
+            
+            # setup costmask according to input maps
+            cost_mask = np.zeros(shape).reshape(shape[0],shape[1], -1)
             for i in range(partition[name]['num']):
-                cost_mask[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] = 0
+                for j in range(partition[name]['num']):
+                    if i==j: continue
+                    maps = partition[name]['maps'][i][j]
+                    cost_mask[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][j]] = maps
+                        
             comm_costs[name] = torch.from_numpy(cost_mask.reshape(shape)).to(device)
             
     return comm_costs

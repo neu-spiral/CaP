@@ -39,9 +39,11 @@ class MoP:
             self.model = load_state_dict(self.model, 
                                          state_dict['model_state_dict'] if 'model_state_dict' in state_dict 
                                          else state_dict['state_dict'] if 'state_dict' in state_dict else state_dict,)
-            criterion,_,_ = set_optimizer(self.configs, self.model, self.train_loader, self.configs['optimizer'], 
-                                          self.configs['learning_rate'], self.configs['epochs'])
-            acc = self.test_model(self.model, criterion)
+            # Compute Accuracy
+            #criterion,_,_ = set_optimizer(self.configs, self.model, self.train_loader, self.configs['optimizer'], 
+            #                              self.configs['learning_rate'], self.configs['epochs'])
+            #acc = self.test_model(self.model, criterion)
+            
         else:
             print('standard train')
             #self.model.apply(init_weights)
@@ -77,6 +79,12 @@ class MoP:
         # Test before prune
         test_partition(self.model, partition=self.configs['partition'])
         
+        # Plot model
+        #layer_id = (2,6,11,15)
+        #layer_id = (2,4)
+        #plot_layer(self.model, self.configs['partition'], layer_id=layer_id,
+        #           savepath=get_fig_path("{}".format('.'.join(configs["load_model"].split('.')[:-1]))))
+            
     def prune(self):
         nepoch = self.configs['epochs']
         criterion, optimizer, scheduler = set_optimizer(self.configs, self.model, self.train_loader, \
@@ -97,15 +105,12 @@ class MoP:
         hard_prune(admm, self.model, self.configs['sparsity_type'], option=None)
         
         # test sparsity
-        if self.configs['sparsity_type']=='kernel':
-            test_kernel_sparsity(self.model, partition=self.configs['partition'])
-            test_partition(self.model, partition=self.configs['partition'])
-        else:
-            test_filter_sparsity(self.model)
+        test_kernel_sparsity(self.model, partition=self.configs['partition'])
+        test_partition(self.model, partition=self.configs['partition'])
         
         # plot first conv layer
-        plot_layer(self.model, self.configs['partition'], layer_id=10,
-                   savepath=get_fig_path("{}".format('.'.join(self.model_file.split('.')[:-1]))))
+        #plot_layer(self.model, self.configs['partition'], layer_id=(1,5,10,),
+        #           savepath=get_fig_path("{}".format('.'.join(self.model_file.split('.')[:-1]))))
         #save_model(self.model, get_model_path("{}.pt".format('.'.join(self.model_file.split('.')[:-1])+'_hardprune')))
                 
     def finetune(self):
@@ -144,12 +149,10 @@ class MoP:
             if acc > best:
                 best = acc
                 save_model(self.model, get_model_path("{}".format(self.model_file)))
+                print('Save model')
         
-        if self.configs['sparsity_type']=='kernel':
-            test_kernel_sparsity(self.model, partition=self.configs['partition'])
-            test_partition(self.model, partition=self.configs['partition'])
-        else:
-            test_filter_sparsity(self.model)
+        test_kernel_sparsity(self.model, partition=self.configs['partition'])
+        test_partition(self.model, partition=self.configs['partition'])
     
     def pruneMask(self):
         nepoch = self.configs['epochs']

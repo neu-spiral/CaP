@@ -3,7 +3,7 @@ import torch
 from numpy import linalg as LA
 
 from .masks import *
-from PIL import Image
+from PIL import Image,ImageOps,ImageColor
 
 def test_sparsity_mask(args,mask):
     """
@@ -274,20 +274,29 @@ def test_partition(model, partition):
             cost_mask = np.ones(weight2d.shape)
             for i in range(partition[name]['num']):
                 cost_mask[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] = 0
+            cost_mask = cost_mask.astype("bool")
             weight_select = weight2d*cost_mask
+            
+            intra_weight = np.sum(~cost_mask*weight2d!=0)
             
             kernels = shape[0]*shape[1]
             kernels_zeros = np.sum(weight2d == 0)
             interpk = np.sum(cost_mask != 0)
             interpk_select = np.sum((weight_select) != 0)
             
+            
             # check inter-p kernels per partition
-            comms_interp = []
+            interps, comms_interp = [], []
             for i in range(partition[name]['num']):
                 for j in range(partition[name]['num']):
                     if i==j: continue
-                    comms_interp.append(np.sum((weight_select[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][j]]) != 0))
-            comms_interp = [x*outsize for x in comms_interp]
+                    if len(shape) > 2:
+                        each = np.sum(np.sum(weight_select[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][j]], axis=0) != 0)
+                    else:
+                        each = np.sum((weight_select[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][j]]) != 0)
+                    #each *= partition[name]['maps'][i][j]
+                    interps.append(each)
+                    comms_interp.append(each*outsize*partition[name]['maps'][i][j])
             
             # update
             total_kernels += kernels
@@ -300,8 +309,8 @@ def test_partition(model, partition):
             total_max_comm_interp += max(comms_interp)
             total_params += kernels*kernel_size
             
-            print("{}: params:{}, interp-k:{}, interp-k(select):{}, max-interp-k(select):{}, outsize:{}, total-interp-comm:{}, max-interp-comm:{}".format(name, kernels*kernel_size, interpk, interpk_select, int(max(comms_interp)/outsize), outsize, sum(comms_interp), max(comms_interp)))
-            #print(comms_interp)
+            print("{}: params:{}, params-intrap:{}, params-interp:{}, interp-k:{}, interp-k(select):{}, max-interp-k(select):{}, outsize:{}, total-interp-comm:{}, max-interp-comm:{}".format(name, kernels*kernel_size, intra_weight*kernel_size, interpk_select*kernel_size, interpk, interpk_select, max(interps), outsize, sum(comms_interp), max(comms_interp)))
+            print(comms_interp)
             
     print("---------------------------------------------------------------------------")
     print("total number of kernels:{}, zero-kernels:{}, kernel sparsity is: {:.4f}".format(
@@ -311,19 +320,69 @@ def test_partition(model, partition):
     
     print("===========================================================================\n\n")
 
-def plot_layer(model, partition, layer_id=1, savepath=''):
+def get_concat_v_blank(im1, im2, margins=0):
+    dst = Image.new('RGB', (im1.width, im1.height + im2.height + margins), color=(255,255,255))
+    dst.paste(im1, (0, 0))
+    dst.paste(im2, (0, im1.height+ margins))
+    return dst
+
+def plot_layer(model, partition, layer_id=(1,), savepath=''):
     counter = 0
+    img_prev = None
     for name, W in model.named_parameters():
         if name in partition:
             counter +=1
-            if counter == layer_id:
+            if counter in layer_id:
                 weight = W.cpu().detach().numpy()
                 shape = weight.shape
                 weight2d = np.abs(weight.reshape(weight.shape[0], weight.shape[1], -1).sum(-1))
-                weight2d[weight2d>0] = 255
-                #print(weight2d)
-                img = Image.fromarray(weight2d).convert("L")
-                img.save(savepath+'_'+name+'.png')
+                
+                '''
+                intra/inter-weights(0) := 0 -> white
+                intra-weights(1) := 2 -> green
+                inter-weights(1) := 1 -> red
+                '''
+                weight2d[weight2d>0] = 2
+                for i in range(partition[name]['num']):
+                    for j in range(partition[name]['num']):
+                        if i==j: continue
+                        weight2d[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][j]] -= 1
+                weight2d[weight2d==-1] = 0
+                
+                #red, green = '#FF716E', '#B4C06E'
+                red, green = '#FF0606', '#0FA958'
+                red = ImageColor.getcolor(red, "RGB")
+                green = ImageColor.getcolor(green, "RGB")
+                img = Image.fromarray(weight2d).convert("RGB")
+                pixels = img.load()
+                
+                print(img.size, weight2d.shape)
+                for i in range(img.size[0]): # for every pixel:
+                    for j in range(img.size[1]):
+                        if weight2d[j][i] == 0:
+                            pixels[i,j] = (255,255,255) 
+                        elif weight2d[j][i] == 1:
+                            pixels[i,j] = red
+                        elif weight2d[j][i] == 2:
+                            pixels[i,j] = green
+                
+                # resize to 128
+                target = 64
+                width, height = img.size
+                scaler = width / target
+                height = int(height / scaler)
+                newsize= (target, height)
+                img = img.resize(newsize)
+                img = ImageOps.expand(img, border=1, fill='black')
+                #img.save(savepath+name+'.png')
+                
+                if img_prev:
+                    img = get_concat_v_blank(img_prev, img, margins=10)
+                    img_prev = img
+                else:
+                    img_prev = img
+    
+    img.save(savepath+'.png')
                 
 
 def test_filter_balance(model):

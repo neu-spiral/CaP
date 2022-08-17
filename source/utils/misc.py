@@ -56,7 +56,7 @@ def get_input_from_code(configs):
     else:
         input_shape = [(3, 32, 32)]
     
-    input_np = (np.random.uniform(0, 1, (1,)+x) for x in input_shape)
+    input_np = (np.random.uniform(0, 1, (2,)+x) for x in input_shape)
     input_var = tuple(Variable(torch.FloatTensor(x), requires_grad=False).to(device) for x in input_np)
     return input_var
     
@@ -191,7 +191,7 @@ def mixup_data(*x, y, alpha=1.0):
     mixed_x = ()
     
     batch_size = y.size()[0]
-    index = torch.randperm(batch_size).cuda()
+    index = torch.randperm(batch_size)
 
     for piece in x:
         mixed_x += (lam * piece + (1 - lam) * piece[index, :],)

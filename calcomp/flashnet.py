@@ -237,7 +237,7 @@ class FeatureFusionCI(nn.Module):
         hidden_layers.append(x1)
         hidden_layers.append(x2)
         x = torch.cat((x1, x2), dim=1)
-        #print("Shape1: ", x.shape)
+        print("Shape1: ", x.shape)
         if self.fusion == 'penultimate':
             x = torch.reshape(x, (32, 32, 10)) # (batch_size, 32, 10) ((2, 64) in infocom paper)
             # x = x.permute((2, 1)) # used in infocom paper - commented here (not working)
@@ -300,7 +300,7 @@ class FeatureFusion(nn.Module):
         hidden_layers.append(x2)
 
         x = torch.cat((x1, x2), dim=1)
-        #print("Shape1: ", x.shape)
+        print("Shape1: ", x.shape)
         if self.fusion == 'penultimate':
             x = self.relu(self.hidden1(x))
             x = self.bn1(x)
@@ -319,16 +319,15 @@ class FeatureFusion(nn.Module):
 
 # CNN BASED FUSION CLASS - THREE MODALITIES - Infocom version
 class InfoFusionThree(nn.Module):
-    def __init__(self, modelA, modelB, modelC, nb_classes=5, fusion = 'penultimate'):
+    def __init__(self, nb_classes=5, fusion = 'penultimate', mode=''):
         super(InfoFusionThree, self).__init__()
-        self.modelA = modelA
-        self.modelB = modelB
-        self.modelC = modelC
         self.fusion = fusion
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax()
 
+        self.mode = mode
+        self.shrink = 0.3 if mode == 'calcomp' else 1
 
         #self.classifier = nn.Linear(3*nb_classes, nb_classes) # change
 
@@ -343,53 +342,60 @@ class InfoFusionThree(nn.Module):
         # self.bn4 = nn.BatchNorm1d(128)
         # self.out = nn.Linear(128, nb_classes)
 
-        self.hidden0 = nn.Linear(832, 2048)
-        self.bn0 = nn.BatchNorm1d(2048)
+        if mode == 'calcomp':
+            self.hidden0 = nn.Linear(512, int(self.shrink*2048))
+        else:
+            self.hidden0 = nn.Linear(832, 2048)
+        self.bn0 = nn.BatchNorm1d(int(self.shrink*2048))
         #self.hidden01 = nn.Linear(2048, 1024)
         #self.bn01 = nn.BatchNorm1d(1024)
 
-        self.hidden1 = nn.Linear(2048, 1024)
-        self.bn1 = nn.BatchNorm1d(1024)
-        self.hidden2 = nn.Linear(1024, 512)
-        self.bn2 = nn.BatchNorm1d(512)
-        self.hidden3 = nn.Linear(512, 256)
-        self.bn3 = nn.BatchNorm1d(256)
-        self.hidden4 = nn.Linear(256, 128)
-        self.bn4 = nn.BatchNorm1d(128)
-        self.out = nn.Linear(128, nb_classes)
+        self.hidden1 = nn.Linear(int(self.shrink*2048), int(self.shrink*1024))
+        self.bn1 = nn.BatchNorm1d(int(self.shrink*1024))
+        self.hidden2 = nn.Linear(int(self.shrink*1024), int(self.shrink*512))
+        self.bn2 = nn.BatchNorm1d(int(self.shrink*512))
+        self.hidden3 = nn.Linear(int(self.shrink*512), int(self.shrink*256))
+        self.bn3 = nn.BatchNorm1d(int(self.shrink*256))
+        self.hidden4 = nn.Linear(int(self.shrink*256), int(self.shrink*128))
+        self.bn4 = nn.BatchNorm1d(int(self.shrink*128))
+        self.out = nn.Linear(int(self.shrink*128), nb_classes)
 
 
     # x1: acoustic; x2: radar; x3: seismic
     def forward(self, x1, x2, x3):
-        x1 = self.modelA(x1)  # clone to make sure x is not changed by inplace methods
         x1 = x1.view(x1.size(0), -1)
-        
-        x2 = self.modelB(x2)
         x2 = x2.view(x2.size(0), -1)
-
-        x3 = self.modelC(x3)
         x3 = x3.view(x3.size(0), -1)
         
         x = torch.cat((x1, x2, x3), dim=1)
 
         if self.fusion == 'penultimate':
             # x = torch.reshape(x, (x.shape[0], 1, x.shape[1]))
-            x = x.view(x.size(0), -1)
-            #print("Shape: ", x.shape)
+            if self.mode == 'calcomp':
+                x = x3.view(x3.size(0), -1)
+            else:
+                x = x.view(x.size(0), -1)
+            # print("Shape: ", x.shape)
 
             x = self.relu(self.hidden0(x))
             x = self.bn0(x)
-            # x = self.relu(self.hidden01(x))
-            # x = self.bn01(x)
+            #x = x[:,:int(self.shrink*x.size(1))] if self.mode == 'calcomp' else x
 
             x = self.relu(self.hidden1(x))
             x = self.bn1(x)
+            #x = x[:,:int(self.shrink*x.size(1))] if self.mode == 'calcomp' else x
+            
             x = self.relu(self.hidden2(x))
             x = self.bn2(x)
+            #x = x[:,:int(self.shrink*x.size(1))] if self.mode == 'calcomp' else x
+            
             x = self.relu(self.hidden3(x))
             x = self.bn3(x)
+            #x = x[:,:int(self.shrink*x.size(1))] if self.mode == 'calcomp' else x
+            
             x = self.relu(self.hidden4(x))
             x = self.bn4(x)
+            
             x = self.out(x)  # no softmax: CrossEntropyLoss()
             
             return x

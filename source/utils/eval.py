@@ -29,7 +29,7 @@ class EvalHelper():
         self.data_code = data_code
     
     def call(self, output, target):
-        if self.data_code == 'fusion':
+        if self.data_code == 'flash':
             acc = [(torch.argmax(target, axis=1) == torch.argmax(output, axis=1)).sum()*100/target.size(0)]
         else:
             acc = self.accuracy(output, target, topk=(1,))

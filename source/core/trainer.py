@@ -52,25 +52,35 @@ def standard_train(configs, cepoch, model, data_loader, criterion, optimizer, sc
             for (name, W) in model.named_parameters():
                 if name in ADMM.prune_ratios:
                     comm_cost = torch.abs(W) * configs['comm_costs'][name]
-                    #v1: abs(W)*comm_cost
-                    comm_cost = comm_cost.view(comm_cost.size(0), -1).sum()
-                    if configs['comm_outsize']:
-                        comm_loss += comm_cost*partition[name]['outsize']
-                    else:
-                        comm_loss += comm_cost
                     '''
-                    #v2: max(abs(W)*comm_cost)
+                    v1: abs(W)*comm_cost
+                    '''
+                    #comm_cost = comm_cost.view(comm_cost.size(0), -1).sum()
+                    #if configs['comm_outsize']:
+                    #    comm_loss += comm_cost*partition[name]['outsize']
+                    #else:
+                    #    comm_loss += comm_cost
+                    
+                    '''
+                    #v2: further constrain on max(abs(W)*comm_cost)
+                    '''
+                    
                     comm_cost = comm_cost.reshape(W.shape[0], W.shape[1], -1).sum(-1)
                     for i in range(partition[name]['num']):
                         for j in range(partition[name]['num']):
                             if i==j: continue
-                            comm_loss = max(comm_loss, 
-                                            comm_cost[partition[name]['filter_id'][i][:,None],
-                                                      partition[name]['channel_id'][j]].sum())
-                    '''
+                            cost_interp = comm_cost[partition[name]['filter_id'][i][:,None],
+                                                    partition[name]['channel_id'][j]].sum()
+                            #comm_loss += cost_interp*partition[name]['outsize']) #p_{count}
+                            comm_loss = max(comm_loss,cost_interp*partition[name]['outsize']) # p_{max}
+                            
+                            #comp_loss = max(comp_loss, cost_interp*partition[name]['outsize'])
                     
+                    '''
+                    computation cost:
                     for i in range(partition[name]['num']):
                         comp_loss = max(comp_loss, torch.abs(W).view(W.size(0), -1)[partition[name]['filter_id'][i],:].sum())
+                    '''
             total_loss += configs['lambda_comm'] * comm_loss + configs['lambda_comp'] * comp_loss
         
         total_loss.backward() # Back Propagation

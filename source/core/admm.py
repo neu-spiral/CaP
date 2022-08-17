@@ -161,11 +161,18 @@ def weight_pruning(weight, name, prune_ratio, sparsity_type, cross_x=4, cross_f=
     elif (sparsity_type == 'partition'):
         num_partition = partition[name]['num']
         shape = weight.shape
-        weight2d = np.zeros(shape).reshape(shape[0],shape[1], -1)
+        weight3d = weight.reshape(shape[0], shape[1], -1)
+        zero3d = np.zeros(shape).reshape(shape[0],shape[1], -1)
+        shape3d = weight3d.shape
+        if len(shape3d) == 2:
+            weight3d, zero3d = weight3d[:,:,None], zero3d[:,:,None]
+            
         for i in range(num_partition):
             #weight_copy[i::num_partition,i::num_partition,:,:] = weight[i::num_partition,i::num_partition,:,:]
-            weight2d[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] = weight[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i]] 
-        return num_partition, torch.from_numpy(weight2d).float().to(device)    
+            zero3d[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i],:] = weight3d[partition[name]['filter_id'][i][:,None],partition[name]['channel_id'][i],:] 
+        
+        weight = zero3d.reshape(shape)
+        return num_partition, torch.from_numpy(weight).float().to(device)    
     
     elif (sparsity_type == 'kernel'):
         shape = weight.shape

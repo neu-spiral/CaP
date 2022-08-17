@@ -220,8 +220,8 @@ def get_flash_data(data_folder_path, batch_size=64):
         (torch.utils.data.DataLoader): test loader
     '''
     experiment_catergories = ['Cat1','Cat2','Cat3','Cat4']
-    experiment_epiosdes = ['0']
-    #experiment_epiosdes = ['0','1','2','3','4','5','6','7','8','9']
+    #experiment_epiosdes = ['0']
+    experiment_epiosdes = ['0','1','2','3','4','5','6','7','8','9']
     selected_paths = detecting_related_file_paths(data_folder_path,experiment_catergories,experiment_epiosdes)
     
     # Outputs

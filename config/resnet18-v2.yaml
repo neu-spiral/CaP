@@ -11,45 +11,149 @@ bn_partitions:
     - 4
     - 4
 partitions:
+   inputs:
+     - [1,1,1,1,1]
    conv1.weight:
-     1
+     - [1,1,1,1]
    layer1.0.conv1.weight:
-     4
+     - [1,1,1,1]
    layer1.0.conv2.weight:
-     4
+     - [1,1,1,1]
    layer1.1.conv1.weight:
-     4
+     - [1,1,1,1]
    layer1.1.conv2.weight:
-     4
+     - [1,1,1,1]
    layer2.0.conv1.weight:
-     4
+     - [1,1,1,1]
    layer2.0.conv2.weight:
-     4
+     - [1,1,1,1]
    layer2.0.shortcut.0.weight:
-     4
+     - [1,1,1,1]
    layer2.1.conv1.weight:
-     4
+     - [1,1,1,1]
    layer2.1.conv2.weight:
-     4
+     - [1,1,1,1]
    layer3.0.conv1.weight:
-     4
+     - [1,1,1,1]
    layer3.0.conv2.weight:
-     4
+     - [1,1,1,1]
    layer3.0.shortcut.0.weight:
-     4
+     - [1,1,1,1]
    layer3.1.conv1.weight:
-     4
+     - [1,1,1,1]
    layer3.1.conv2.weight:
-     4
+     - [1,1,1,1]
    layer4.0.conv1.weight:
-     4
+     - [1,1,1,1]
    layer4.0.conv2.weight:
-     4
+     - [1,1,1,1]
    layer4.0.shortcut.0.weight:
-     4
+     - [1,1,1,1]
    layer4.1.conv1.weight:
-     4
+     - [1,1,1,1]
    layer4.1.conv2.weight:
-     4
+     - [1,1,1,1]
+     
+maps:
+   conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer1.0.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer1.0.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer1.1.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer1.1.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer2.0.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer2.0.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer2.0.shortcut.0.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer2.1.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer2.1.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer3.0.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer3.0.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer3.0.shortcut.0.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer3.1.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer3.1.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer4.0.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer4.0.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer4.0.shortcut.0.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer4.1.conv1.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
+   layer4.1.conv2.weight:
+     - [0,1,1,1]
+     - [1,0,1,1]
+     - [1,1,0,1]
+     - [1,1,1,0]
 
    

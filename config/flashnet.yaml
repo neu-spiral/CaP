@@ -7,15 +7,40 @@ bn_partitions:
     - 3
     - 3
 partitions:
+   inputs:
+     - [64,256,512]
    hidden0.weight:
-     3
+     - [1,1,1]
    hidden1.weight:
-     3
+     - [1,1,1]
    hidden2.weight:
-     3
+     - [1,1,1]
    hidden3.weight:
-     3
+     - [1,1,1]
    hidden4.weight:
-     3
+     - [1,1,1]
+maps:
+   hidden0.weight:
+     - [0,1,1]
+     - [1,0,1]
+     - [1,1,0]
+   hidden1.weight:
+     - [0,1,1]
+     - [1,0,1]
+     - [1,1,0]
+   hidden2.weight:
+     - [0,1,1]
+     - [1,0,1]
+     - [1,1,0]
+   hidden3.weight:
+     - [0,1,1]
+     - [1,0,1]
+     - [1,1,0]
+   hidden4.weight:
+     - [0,1,1]
+     - [1,0,1]
+     - [1,1,0]
+     
+     
 
    
