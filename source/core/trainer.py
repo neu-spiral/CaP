@@ -55,16 +55,16 @@ def standard_train(configs, cepoch, model, data_loader, criterion, optimizer, sc
                     '''
                     v1: abs(W)*comm_cost
                     '''
-                    #comm_cost = comm_cost.view(comm_cost.size(0), -1).sum()
-                    #if configs['comm_outsize']:
-                    #    comm_loss += comm_cost*partition[name]['outsize']
-                    #else:
-                    #    comm_loss += comm_cost
+                    comm_cost = comm_cost.view(comm_cost.size(0), -1).sum()
+                    if configs['comm_outsize']:
+                        comm_loss += comm_cost*partition[name]['outsize']
+                    else:
+                        comm_loss += comm_cost
                     
                     '''
-                    #v2: further constrain on max(abs(W)*comm_cost)
+                    #v2: further constraint on max(abs(W)*comm_cost)
                     '''
-                    
+                    '''
                     comm_cost = comm_cost.reshape(W.shape[0], W.shape[1], -1).sum(-1)
                     for i in range(partition[name]['num']):
                         for j in range(partition[name]['num']):
@@ -75,7 +75,7 @@ def standard_train(configs, cepoch, model, data_loader, criterion, optimizer, sc
                             comm_loss = max(comm_loss,cost_interp*partition[name]['outsize']) # p_{max}
                             
                             #comp_loss = max(comp_loss, cost_interp*partition[name]['outsize'])
-                    
+                    '''
                     '''
                     computation cost:
                     for i in range(partition[name]['num']):
