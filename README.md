@@ -1,6 +1,6 @@
 # Official Implementation of CaP @ INFOCOM 23
 
-This codebase contains the implementation of **[Communication-Aware DNN Pruning] (INFOCOM2022)**.
+This codebase contains the implementation of **[Communication-Aware DNN Pruning] (INFOCOM2023)**.
 
 ## Introduction
 We propose a Communication-aware Pruning (CaP) algorithm, a novel distributed inference framework for distributing DNN computations across a physical network. 
